@@ -11,6 +11,10 @@ Este repositorio es independiente del repositorio principal de la app
 de la app sea visible al construir el panel, pero está en su propio
 `.gitignore` — nunca se commitea ahí).
 
+## Staging
+
+Publicado en GitHub Pages: **https://lhlopezm2.github.io/panel-admon-hermeskopio-staging/**
+
 ## Requisitos
 
 - Node.js 20+ y npm.
