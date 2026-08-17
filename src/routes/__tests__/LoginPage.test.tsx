@@ -70,7 +70,7 @@ describe("LoginPage", () => {
     expect(navigateMock).not.toHaveBeenCalled();
   });
 
-  it("navega a /reportes cuando el login es válido y is_admin() = true", async () => {
+  it("navega a /reportes/negocios cuando el login es válido y is_admin() = true", async () => {
     supabase.auth.signInWithPassword.mockResolvedValue({ error: null });
     supabase.rpc.mockResolvedValue({ data: true, error: null });
     const user = userEvent.setup();
@@ -81,7 +81,7 @@ describe("LoginPage", () => {
     await user.click(screen.getByRole("button", { name: "Ingresar" }));
 
     await waitFor(() =>
-      expect(navigateMock).toHaveBeenCalledWith("/reportes", { replace: true }),
+      expect(navigateMock).toHaveBeenCalledWith("/reportes/negocios", { replace: true }),
     );
   });
 

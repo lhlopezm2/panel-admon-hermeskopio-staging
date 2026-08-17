@@ -42,6 +42,31 @@ export interface BloqueoHistorialRow {
   email_enviado_en: string | null;
 }
 
+// Filas devueltas por los RPCs admin_list_negocios_reportados_pendientes /
+// admin_list_negocios_bloqueados (supabase/migrations/20260817221541_...) —
+// ya vienen con el email del dueño resuelto server-side, ya que ni
+// `personas` ni `persona_negocio` tienen policy admin-read directa.
+export interface NegocioReportadoPendiente {
+  id_negocio: string;
+  nombre: string;
+  ciudad: string | null;
+  departamento: string | null;
+  owner_email: string | null;
+  total_reportes: number;
+  reportes_pendientes: number;
+  ultimo_motivo: ReportReason | null;
+}
+
+export interface NegocioBloqueado {
+  id_negocio: string;
+  nombre: string;
+  ciudad: string | null;
+  departamento: string | null;
+  owner_email: string | null;
+  motivo_bloqueo: string | null;
+  bloqueado_en: string | null;
+}
+
 export const REPORT_REASON_LABELS: Record<ReportReason, string> = {
   informacion_incorrecta: "Información incorrecta",
   negocio_cerrado: "Negocio cerrado",

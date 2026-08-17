@@ -34,6 +34,24 @@ describe("App routing", () => {
     expect(screen.getByText("Verificando permisos…")).toBeInTheDocument();
   });
 
+  it("/reportes/negocios está protegida por AdminGuard", () => {
+    window.history.pushState({}, "", "/reportes/negocios");
+    render(<App />);
+    expect(screen.getByText("Verificando permisos…")).toBeInTheDocument();
+  });
+
+  it("/reportes/necesidades está protegida por AdminGuard", () => {
+    window.history.pushState({}, "", "/reportes/necesidades");
+    render(<App />);
+    expect(screen.getByText("Verificando permisos…")).toBeInTheDocument();
+  });
+
+  it("/reportes/problemas está protegida por AdminGuard", () => {
+    window.history.pushState({}, "", "/reportes/problemas");
+    render(<App />);
+    expect(screen.getByText("Verificando permisos…")).toBeInTheDocument();
+  });
+
   it("/negocio/:id está protegida por AdminGuard", () => {
     window.history.pushState({}, "", "/negocio/b1");
     render(<App />);

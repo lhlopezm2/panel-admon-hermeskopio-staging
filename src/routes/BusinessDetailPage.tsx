@@ -141,7 +141,10 @@ export default function BusinessDetailPage() {
 
   return (
     <div className="mx-auto max-w-2xl p-6">
-      <Link to="/reportes" className="text-sm text-gray-500 hover:underline">
+      <Link
+        to="/reportes/negocios"
+        className="text-sm text-gray-500 hover:underline"
+      >
         ← Volver a reportes
       </Link>
 

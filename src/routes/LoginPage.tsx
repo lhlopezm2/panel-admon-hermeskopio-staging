@@ -36,7 +36,7 @@ export default function LoginPage() {
       return;
     }
 
-    navigate("/reportes", { replace: true });
+    navigate("/reportes/negocios", { replace: true });
   }
 
   return (

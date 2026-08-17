@@ -50,29 +50,63 @@ GitHub repo name or the deployed assets 404.
 
 ### Routing and auth gate (`src/App.tsx`, `src/routes/AdminGuard.tsx`)
 
-Three routes: `/login` (public), `/reportes` and `/negocio/:id` (both
-wrapped by `AdminGuard` as a layout route), and a catch-all that redirects
-to `/reportes`. `AdminGuard` is the single authorization chokepoint — it
-checks for a Supabase session, then calls the `is_admin()` RPC (the exact
-same predicate the database's RLS policies evaluate), and redirects to
-`/login` if either check fails. There is no client-side admin allowlist or
-role field anywhere in this codebase; `is_admin()` is the only source of
-truth, and it's re-checked on every guarded navigation, not cached.
+Routes: `/login` (public); `/reportes` (wrapped by `AdminGuard`, then by
+`ReportsLayout` as a nested layout route) with 3 child routes —
+`/reportes/negocios`, `/reportes/necesidades`, `/reportes/problemas` — plus
+an index redirect from bare `/reportes` to `/reportes/negocios`;
+`/negocio/:id` (wrapped by `AdminGuard` only, not `ReportsLayout` — it's a
+drill-down detail view, not one of the 3 tabs); and a catch-all that
+redirects to `/reportes`. `AdminGuard` is the single authorization
+chokepoint — it checks for a Supabase session, then calls the `is_admin()`
+RPC (the exact same predicate the database's RLS policies evaluate), and
+redirects to `/login` if either check fails. There is no client-side admin
+allowlist or role field anywhere in this codebase; `is_admin()` is the only
+source of truth, and it's re-checked on every guarded navigation, not
+cached.
 
 `LoginPage` does its own redundant `is_admin()` check right after sign-in
 (to show an inline "not authorized" message and sign back out instead of
 bouncing through `/login` a second time) — this is intentionally duplicated
 logic, not a shared hook, since the two components need different failure
-UX (inline error vs. silent redirect).
+UX (inline error vs. silent redirect). On success it navigates straight to
+`/reportes/negocios`, not bare `/reportes`.
 
-### Report moderation flow (`src/routes/ReportsListPage.tsx`, `src/routes/BusinessDetailPage.tsx`)
+### Tabs (`src/routes/ReportsLayout.tsx`)
 
-`ReportsListPage` fetches every row from `reports` (allowed only under the
-`reports_select_admin` RLS policy — a non-admin can only ever see their own
-reports), joins in `businesses` via the embedded select, then groups client
-side by `id_negocio` and sorts groups by total report count (descending) —
-this is done in JS, not SQL, because the grouping/sorting only needs to
-happen over what's already a small admin-only result set.
+`ReportsLayout` is the layout route for the 3 top-level tabs — real routes
+(not in-memory tab state), so each is refreshable/deep-linkable like every
+other screen in this panel. It owns the tab nav (`NavLink`, active-state
+styling) and the "Cerrar sesión" button (moved here from the old
+`ReportsListPage` since it now applies to all 3 tabs, not just one), and
+renders the active child via `<Outlet />`. `NecesidadesReportadasPage` and
+`ProblemasReportadosPage` are deliberately empty ("Próximamente.") — both
+`necesidades_reportadas` and `problemas_reportados` are insert-only tables
+with no admin SELECT policy yet, so there's nothing to fetch until that
+functionality is designed.
+
+### Report moderation flow (`src/routes/NegociosReportadosPage.tsx`, `src/routes/BusinessDetailPage.tsx`)
+
+`NegociosReportadosPage` (the `/reportes/negocios` tab) renders two
+independent listings, each with its own debounced (300 ms,
+`src/lib/useDebouncedValue.ts`) search-by-owner-email input:
+"Con reportes pendientes" (businesses with at least one `pendiente` report)
+and "Bloqueados" (`businesses.bloqueado = true`, regardless of whether they
+ever had a report — an admin can block from `BusinessDetailPage` with just
+a motivo, no report required). Both come from `security definer` RPCs —
+`admin_list_negocios_reportados_pendientes(p_email_search)` and
+`admin_list_negocios_bloqueados(p_email_search)`
+(`supabase/migrations/20260817221541_admin_list_reportados_bloqueados_rpcs.sql`)
+— rather than a client-side embedded select like the old single-list
+version used. Reason: searching by the owner's email requires reading
+`personas.email` joined through `persona_negocio` (`rol = 'owner'`
+specifically, never a delegate), and neither table has an admin-read RLS
+policy — only `businesses` and `reports` do (`20260813044922`,
+`20260813044929`). Rather than opening broad RLS read access to those two
+tables, the join and the `is_admin()` check both happen server-side inside
+the RPCs, so the client only ever receives the handful of columns the UI
+needs. The two lists are structurally disjoint in practice: `block_negocio`
+auto-transitions a business's `pendiente` reports to `accionado`, so a
+newly-blocked business drops out of the first list as it enters the second.
 
 `BusinessDetailPage` is where blocking actually happens, via two
 `security definer` RPCs owned by the main repo's migrations:
@@ -102,11 +136,14 @@ dismiss and no way to change status back.
 
 ### Data shapes (`src/lib/types.ts`)
 
-Every row shape read from Supabase (`Business`, `Report`, `BloqueoHistorialRow`)
-and the `ReportReason`/`ReportStatus`/`BloqueoAccion` unions are declared
-once here and imported everywhere — there is no separate model/DTO layer
-like the Flutter app's `data/models/`, since this panel only ever reads
-rows close to their raw table shape.
+Every row shape read from Supabase (`Business`, `Report`, `BloqueoHistorialRow`,
+`NegocioReportadoPendiente`, `NegocioBloqueado`) and the
+`ReportReason`/`ReportStatus`/`BloqueoAccion` unions are declared once here
+and imported everywhere — there is no separate model/DTO layer like the
+Flutter app's `data/models/`, since this panel only ever reads rows close
+to their raw table/RPC-return shape. `NegocioReportadoPendiente` and
+`NegocioBloqueado` mirror the two admin-listing RPCs' `returns table(...)`
+column-for-column, not any actual table.
 
 ### Tests (`src/**/__tests__/`)
 
