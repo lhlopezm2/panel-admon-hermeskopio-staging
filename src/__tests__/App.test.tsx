@@ -20,7 +20,7 @@ beforeEach(() => {
 
 describe("App routing", () => {
   it("/login renderiza LoginPage sin pasar por AdminGuard", () => {
-    window.history.pushState({}, "", "/login");
+    window.history.pushState({}, "", "#/login");
     render(<App />);
     expect(
       screen.getByText("Panel de administración — Hermeskopio"),
@@ -29,37 +29,37 @@ describe("App routing", () => {
   });
 
   it("/reportes está protegida por AdminGuard", () => {
-    window.history.pushState({}, "", "/reportes");
+    window.history.pushState({}, "", "#/reportes");
     render(<App />);
     expect(screen.getByText("Verificando permisos…")).toBeInTheDocument();
   });
 
   it("/reportes/negocios está protegida por AdminGuard", () => {
-    window.history.pushState({}, "", "/reportes/negocios");
+    window.history.pushState({}, "", "#/reportes/negocios");
     render(<App />);
     expect(screen.getByText("Verificando permisos…")).toBeInTheDocument();
   });
 
   it("/reportes/necesidades está protegida por AdminGuard", () => {
-    window.history.pushState({}, "", "/reportes/necesidades");
+    window.history.pushState({}, "", "#/reportes/necesidades");
     render(<App />);
     expect(screen.getByText("Verificando permisos…")).toBeInTheDocument();
   });
 
   it("/reportes/problemas está protegida por AdminGuard", () => {
-    window.history.pushState({}, "", "/reportes/problemas");
+    window.history.pushState({}, "", "#/reportes/problemas");
     render(<App />);
     expect(screen.getByText("Verificando permisos…")).toBeInTheDocument();
   });
 
   it("/negocio/:id está protegida por AdminGuard", () => {
-    window.history.pushState({}, "", "/negocio/b1");
+    window.history.pushState({}, "", "#/negocio/b1");
     render(<App />);
     expect(screen.getByText("Verificando permisos…")).toBeInTheDocument();
   });
 
   it("una ruta desconocida redirige a /reportes", () => {
-    window.history.pushState({}, "", "/algo-que-no-existe");
+    window.history.pushState({}, "", "#/algo-que-no-existe");
     render(<App />);
     expect(screen.getByText("Verificando permisos…")).toBeInTheDocument();
   });

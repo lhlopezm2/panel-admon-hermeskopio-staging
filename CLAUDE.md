@@ -50,6 +50,17 @@ GitHub repo name or the deployed assets 404.
 
 ### Routing and auth gate (`src/App.tsx`, `src/routes/AdminGuard.tsx`)
 
+`App.tsx` uses `HashRouter`, not `BrowserRouter` — GitHub Pages is a static
+file server with no rewrites, and only one real file (`index.html`) exists
+at the site root, so under `BrowserRouter` a hard reload on *any* non-root
+path (`/login`, `/reportes`, `/negocio/:id`, ...) 404s before React ever
+loads. `HashRouter` keeps the route after a `#` (e.g.
+`.../#/reportes/negocios`), which browsers never send to the server, so a
+reload always requests the same always-present `index.html` regardless of
+which route is active. The tradeoff is purely cosmetic (a visible `#` in
+the URL) — there is no `public/404.html` fallback script anywhere in this
+repo; `HashRouter` was chosen specifically to avoid needing one.
+
 Routes: `/login` (public); `/reportes` (wrapped by `AdminGuard`, then by
 `ReportsLayout` as a nested layout route) with 3 child routes —
 `/reportes/negocios`, `/reportes/necesidades`, `/reportes/problemas` — plus
