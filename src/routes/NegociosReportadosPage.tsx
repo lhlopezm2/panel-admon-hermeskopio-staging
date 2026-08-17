@@ -8,59 +8,122 @@ import {
   type NegocioReportadoPendiente,
 } from "../lib/types";
 
-// Dos listados independientes, cada uno con su propio buscador por email
-// del dueño — respaldados por los RPCs admin_list_negocios_reportados_pendientes
-// / admin_list_negocios_bloqueados (supabase/migrations/20260817221541_...),
-// que resuelven el join hasta personas.email server-side porque el panel no
+const PAGE_SIZE = 10;
+
+interface PaginationControlsProps {
+  page: number;
+  totalCount: number;
+  onPrev: () => void;
+  onNext: () => void;
+}
+
+// Compartido por las 2 listas — ambas paginan de a PAGE_SIZE con la misma
+// UI, así que no tiene sentido duplicarla.
+function PaginationControls({ page, totalCount, onPrev, onNext }: PaginationControlsProps) {
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  return (
+    <div className="mt-3 flex items-center justify-between text-sm text-gray-500">
+      <button
+        onClick={onPrev}
+        disabled={page <= 1}
+        className="rounded px-2 py-1 hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-transparent"
+      >
+        ← Anterior
+      </button>
+      <span>
+        Página {page} de {totalPages}
+      </span>
+      <button
+        onClick={onNext}
+        disabled={page >= totalPages}
+        className="rounded px-2 py-1 hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-transparent"
+      >
+        Siguiente →
+      </button>
+    </div>
+  );
+}
+
+// Dos listados lado a lado (no uno debajo del otro) — con miles de negocios
+// reportados, apilarlos obligaría a hacer scroll excesivo antes de llegar a
+// "Bloqueados". Cada uno pagina de a PAGE_SIZE de forma independiente y
+// tiene su propio buscador por email del dueño, respaldados por los RPCs
+// admin_list_negocios_reportados_pendientes / admin_list_negocios_bloqueados
+// (supabase/migrations/20260817221541_..., paginación en 20260817223310_...)
+// — resuelven el join hasta personas.email server-side porque el panel no
 // tiene visibilidad RLS directa sobre esa tabla.
 export default function NegociosReportadosPage() {
   const [pendientesSearch, setPendientesSearch] = useState("");
+  const [pendientesPage, setPendientesPage] = useState(1);
   const [pendientes, setPendientes] = useState<NegocioReportadoPendiente[] | null>(null);
+  const [pendientesTotal, setPendientesTotal] = useState(0);
   const [pendientesError, setPendientesError] = useState<string | null>(null);
   const debouncedPendientesSearch = useDebouncedValue(pendientesSearch, 300);
 
   const [bloqueadosSearch, setBloqueadosSearch] = useState("");
+  const [bloqueadosPage, setBloqueadosPage] = useState(1);
   const [bloqueados, setBloqueados] = useState<NegocioBloqueado[] | null>(null);
+  const [bloqueadosTotal, setBloqueadosTotal] = useState(0);
   const [bloqueadosError, setBloqueadosError] = useState<string | null>(null);
   const debouncedBloqueadosSearch = useDebouncedValue(bloqueadosSearch, 300);
 
   useEffect(() => {
-    loadPendientes(debouncedPendientesSearch);
+    loadPendientes(debouncedPendientesSearch, pendientesPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedPendientesSearch]);
+  }, [debouncedPendientesSearch, pendientesPage]);
 
   useEffect(() => {
-    loadBloqueados(debouncedBloqueadosSearch);
+    loadBloqueados(debouncedBloqueadosSearch, bloqueadosPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedBloqueadosSearch]);
+  }, [debouncedBloqueadosSearch, bloqueadosPage]);
 
-  async function loadPendientes(search: string) {
+  // La página se resetea en el mismo handler que actualiza el texto (no en
+  // un efecto atado al valor debounced) para que no quede, ni por un
+  // instante, una combinación página-vieja + búsqueda-nueva que dispare un
+  // fetch de más camino a la página 1.
+  function handlePendientesSearchChange(value: string) {
+    setPendientesSearch(value);
+    setPendientesPage(1);
+  }
+
+  function handleBloqueadosSearchChange(value: string) {
+    setBloqueadosSearch(value);
+    setBloqueadosPage(1);
+  }
+
+  async function loadPendientes(search: string, page: number) {
     const { data, error } = await supabase.rpc(
       "admin_list_negocios_reportados_pendientes",
-      { p_email_search: search.trim() || null },
+      { p_email_search: search.trim() || null, p_limit: PAGE_SIZE, p_offset: (page - 1) * PAGE_SIZE },
     );
     if (error) {
       setPendientesError(error.message);
       return;
     }
+    const rows = (data as NegocioReportadoPendiente[]) ?? [];
     setPendientesError(null);
-    setPendientes((data as NegocioReportadoPendiente[]) ?? []);
+    setPendientes(rows);
+    setPendientesTotal(rows[0]?.total_count ?? 0);
   }
 
-  async function loadBloqueados(search: string) {
+  async function loadBloqueados(search: string, page: number) {
     const { data, error } = await supabase.rpc("admin_list_negocios_bloqueados", {
       p_email_search: search.trim() || null,
+      p_limit: PAGE_SIZE,
+      p_offset: (page - 1) * PAGE_SIZE,
     });
     if (error) {
       setBloqueadosError(error.message);
       return;
     }
+    const rows = (data as NegocioBloqueado[]) ?? [];
     setBloqueadosError(null);
-    setBloqueados((data as NegocioBloqueado[]) ?? []);
+    setBloqueados(rows);
+    setBloqueadosTotal(rows[0]?.total_count ?? 0);
   }
 
   return (
-    <div className="space-y-8">
+    <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
       <section>
         <h2 className="mb-3 text-lg font-semibold text-gray-900">
           Con reportes pendientes
@@ -68,7 +131,7 @@ export default function NegociosReportadosPage() {
         <input
           type="search"
           value={pendientesSearch}
-          onChange={(e) => setPendientesSearch(e.target.value)}
+          onChange={(e) => handlePendientesSearchChange(e.target.value)}
           placeholder="Buscar por correo del dueño…"
           className="mb-3 w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-accent focus:outline-none"
         />
@@ -119,6 +182,15 @@ export default function NegociosReportadosPage() {
             </li>
           ))}
         </ul>
+
+        {pendientes !== null && pendientes.length > 0 && (
+          <PaginationControls
+            page={pendientesPage}
+            totalCount={pendientesTotal}
+            onPrev={() => setPendientesPage((p) => Math.max(1, p - 1))}
+            onNext={() => setPendientesPage((p) => p + 1)}
+          />
+        )}
       </section>
 
       <section>
@@ -128,7 +200,7 @@ export default function NegociosReportadosPage() {
         <input
           type="search"
           value={bloqueadosSearch}
-          onChange={(e) => setBloqueadosSearch(e.target.value)}
+          onChange={(e) => handleBloqueadosSearchChange(e.target.value)}
           placeholder="Buscar por correo del dueño…"
           className="mb-3 w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-accent focus:outline-none"
         />
@@ -177,6 +249,15 @@ export default function NegociosReportadosPage() {
             </li>
           ))}
         </ul>
+
+        {bloqueados !== null && bloqueados.length > 0 && (
+          <PaginationControls
+            page={bloqueadosPage}
+            totalCount={bloqueadosTotal}
+            onPrev={() => setBloqueadosPage((p) => Math.max(1, p - 1))}
+            onNext={() => setBloqueadosPage((p) => p + 1)}
+          />
+        )}
       </section>
     </div>
   );

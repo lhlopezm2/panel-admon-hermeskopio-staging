@@ -43,9 +43,12 @@ export interface BloqueoHistorialRow {
 }
 
 // Filas devueltas por los RPCs admin_list_negocios_reportados_pendientes /
-// admin_list_negocios_bloqueados (supabase/migrations/20260817221541_...) —
-// ya vienen con el email del dueño resuelto server-side, ya que ni
-// `personas` ni `persona_negocio` tienen policy admin-read directa.
+// admin_list_negocios_bloqueados (supabase/migrations/20260817221541_...,
+// paginación agregada en 20260817223310_...) — ya vienen con el email del
+// dueño resuelto server-side, ya que ni `personas` ni `persona_negocio`
+// tienen policy admin-read directa. `total_count` es el total de negocios
+// que matchean el filtro (antes de aplicar limit/offset), no el tamaño de
+// la página actual — se repite en cada fila vía `count(*) over()`.
 export interface NegocioReportadoPendiente {
   id_negocio: string;
   nombre: string;
@@ -55,6 +58,7 @@ export interface NegocioReportadoPendiente {
   total_reportes: number;
   reportes_pendientes: number;
   ultimo_motivo: ReportReason | null;
+  total_count: number;
 }
 
 export interface NegocioBloqueado {
@@ -65,6 +69,7 @@ export interface NegocioBloqueado {
   owner_email: string | null;
   motivo_bloqueo: string | null;
   bloqueado_en: string | null;
+  total_count: number;
 }
 
 export const REPORT_REASON_LABELS: Record<ReportReason, string> = {

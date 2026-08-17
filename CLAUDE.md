@@ -87,26 +87,44 @@ functionality is designed.
 ### Report moderation flow (`src/routes/NegociosReportadosPage.tsx`, `src/routes/BusinessDetailPage.tsx`)
 
 `NegociosReportadosPage` (the `/reportes/negocios` tab) renders two
-independent listings, each with its own debounced (300 ms,
-`src/lib/useDebouncedValue.ts`) search-by-owner-email input:
-"Con reportes pendientes" (businesses with at least one `pendiente` report)
-and "Bloqueados" (`businesses.bloqueado = true`, regardless of whether they
-ever had a report — an admin can block from `BusinessDetailPage` with just
-a motivo, no report required). Both come from `security definer` RPCs —
-`admin_list_negocios_reportados_pendientes(p_email_search)` and
-`admin_list_negocios_bloqueados(p_email_search)`
-(`supabase/migrations/20260817221541_admin_list_reportados_bloqueados_rpcs.sql`)
-— rather than a client-side embedded select like the old single-list
-version used. Reason: searching by the owner's email requires reading
-`personas.email` joined through `persona_negocio` (`rol = 'owner'`
-specifically, never a delegate), and neither table has an admin-read RLS
-policy — only `businesses` and `reports` do (`20260813044922`,
-`20260813044929`). Rather than opening broad RLS read access to those two
-tables, the join and the `is_admin()` check both happen server-side inside
-the RPCs, so the client only ever receives the handful of columns the UI
-needs. The two lists are structurally disjoint in practice: `block_negocio`
-auto-transitions a business's `pendiente` reports to `accionado`, so a
-newly-blocked business drops out of the first list as it enters the second.
+independent listings **side by side** (`grid md:grid-cols-2`, stacking to a
+single column below the `md` breakpoint) rather than one below the other —
+with a business count in the thousands, stacking them would force scrolling
+past the entire first list before ever seeing "Bloqueados". Each has its
+own debounced (300 ms, `src/lib/useDebouncedValue.ts`) search-by-owner-email
+input and paginates independently at `PAGE_SIZE = 10`
+(`PaginationControls`, a small private component shared by both sections —
+"← Anterior" / "Página X de Y" / "Siguiente →", `Anterior` disabled on page
+1, `Siguiente` disabled on the last page, both hidden entirely when the
+list is empty): "Con reportes pendientes" (businesses with at least one
+`pendiente` report) and "Bloqueados" (`businesses.bloqueado = true`,
+regardless of whether they ever had a report — an admin can block from
+`BusinessDetailPage` with just a motivo, no report required). Both come
+from `security definer` RPCs —
+`admin_list_negocios_reportados_pendientes(p_email_search, p_limit,
+p_offset)` and `admin_list_negocios_bloqueados(p_email_search, p_limit,
+p_offset)` (`supabase/migrations/20260817221541_...`, pagination added in
+`20260817223310_admin_list_negocios_pagination.sql`) — rather than a
+client-side embedded select like the old single-list version used. Reason:
+searching by the owner's email requires reading `personas.email` joined
+through `persona_negocio` (`rol = 'owner'` specifically, never a delegate),
+and neither table has an admin-read RLS policy — only `businesses` and
+`reports` do (`20260813044922`, `20260813044929`). Rather than opening
+broad RLS read access to those two tables, the join and the `is_admin()`
+check both happen server-side inside the RPCs, so the client only ever
+receives the handful of columns the UI needs. Each RPC computes
+`total_count` via `count(*) over()` on a CTE — evaluated before
+`limit`/`offset` apply, so it reflects the full matched set, not the
+current page — and the client reads `total_count` off `data[0]` (absent
+entirely when the page is empty, handled as `0`) to compute total pages.
+Typing in a search box resets that section's page to 1 **synchronously in
+the `onChange` handler**, not in an effect keyed off the debounced value —
+doing it there would leave a one-render window where the old page number
+and the new debounced search value coexist, firing an extra fetch for a
+stale offset against the new filter. The two lists are structurally
+disjoint in practice: `block_negocio` auto-transitions a business's
+`pendiente` reports to `accionado`, so a newly-blocked business drops out
+of the first list as it enters the second.
 
 `BusinessDetailPage` is where blocking actually happens, via two
 `security definer` RPCs owned by the main repo's migrations:
