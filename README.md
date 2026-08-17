@@ -44,6 +44,8 @@ con un mensaje de "no autorizado".
 | `npm run dev` | Servidor de desarrollo con recarga en caliente |
 | `npm run build` | `tsc -b` (chequeo de tipos) + build de producción a `dist/` |
 | `npm run preview` | Sirve localmente el contenido ya compilado de `dist/` |
+| `npm test` | Corre la suite de tests (Vitest + Testing Library) una vez |
+| `npm run test:watch` | Corre la suite de tests en modo watch |
 
 `.env.local` nunca se commitea (está en `.gitignore` de este proyecto). La
 única clave que vive en el bundle final es `VITE_SUPABASE_ANON_KEY` — es
@@ -123,6 +125,3 @@ bloqueo funcione de punta a punta:
   ```
 - **Confirmar el `base` de `vite.config.ts`** una vez exista el nombre real
   del repositorio (paso 2 de la sección de despliegue).
-- **Sin tests automatizados todavía** para este panel — a diferencia de la
-  app Flutter, no hay suite de tests configurada aquí (ni Vitest ni
-  Playwright). Es un gap conocido, no bloqueante para el primer despliegue.
