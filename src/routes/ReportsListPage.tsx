@@ -52,7 +52,10 @@ export default function ReportsListPage() {
         });
       }
     }
-    setGroups(Array.from(byBusiness.values()));
+    const sorted = Array.from(byBusiness.values()).sort(
+      (a, b) => b.reports.length - a.reports.length,
+    );
+    setGroups(sorted);
   }
 
   async function handleLogout() {
