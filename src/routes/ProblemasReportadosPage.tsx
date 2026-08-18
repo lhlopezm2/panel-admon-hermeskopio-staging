@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 import PaginationControls from "../components/PaginationControls";
-import DateRangeFilter from "../components/DateRangeFilter";
-import { dateRangeToIso } from "../lib/dateRange";
 import {
   PROBLEMA_ESTADO_LABELS,
   type ProblemaEstado,
@@ -23,26 +21,24 @@ interface ActionTarget {
 
 // Dos listas lado a lado: "Pendientes" y "Descartados / Solucionados"
 // (mismo layout que NegociosReportadosPage, mismo motivo — evitar scroll
-// excesivo). Cada una pagina de a PAGE_SIZE y filtra por su propio rango de
-// fecha_creacion, de forma independiente. El estado es reversible en
-// cualquier dirección (pendiente ↔ descartado ↔ solucionado) — sin
-// historial de auditoría, solo el estado/justificación actuales — así que
-// las 3 transiciones posibles comparten un único modal de confirmación:
-// "pendiente" no pide justificación (y la borra), "descartado"/"solucionado"
-// la exigen (CHECK problemas_reportados_estado_justificacion_consistency).
-// UPDATE directo bajo "problemas_reportados_update_admin"
-// (20260818031409_...), sin RPC — mismo patrón que "reports_update_admin".
+// excesivo). Cada una pagina de a PAGE_SIZE de forma independiente,
+// siempre ordenada por fecha_creacion descendente — sin filtro de fecha
+// (a diferencia de NecesidadesReportadasPage, que sí lo tiene). El estado
+// es reversible en cualquier dirección (pendiente ↔ descartado ↔
+// solucionado) — sin historial de auditoría, solo el estado/justificación
+// actuales — así que las 3 transiciones posibles comparten un único modal
+// de confirmación: "pendiente" no pide justificación (y la borra),
+// "descartado"/"solucionado" la exigen (CHECK
+// problemas_reportados_estado_justificacion_consistency). UPDATE directo
+// bajo "problemas_reportados_update_admin" (20260818031409_...), sin RPC —
+// mismo patrón que "reports_update_admin".
 export default function ProblemasReportadosPage() {
   const [pendientesPage, setPendientesPage] = useState(1);
-  const [pendientesFrom, setPendientesFrom] = useState("");
-  const [pendientesTo, setPendientesTo] = useState("");
   const [pendientes, setPendientes] = useState<ProblemaReportado[] | null>(null);
   const [pendientesTotal, setPendientesTotal] = useState(0);
   const [pendientesError, setPendientesError] = useState<string | null>(null);
 
   const [resueltosPage, setResueltosPage] = useState(1);
-  const [resueltosFrom, setResueltosFrom] = useState("");
-  const [resueltosTo, setResueltosTo] = useState("");
   const [resueltos, setResueltos] = useState<ProblemaReportado[] | null>(null);
   const [resueltosTotal, setResueltosTotal] = useState(0);
   const [resueltosError, setResueltosError] = useState<string | null>(null);
@@ -53,47 +49,22 @@ export default function ProblemasReportadosPage() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadPendientes(pendientesPage, pendientesFrom, pendientesTo);
+    loadPendientes(pendientesPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendientesPage, pendientesFrom, pendientesTo]);
+  }, [pendientesPage]);
 
   useEffect(() => {
-    loadResueltos(resueltosPage, resueltosFrom, resueltosTo);
+    loadResueltos(resueltosPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resueltosPage, resueltosFrom, resueltosTo]);
+  }, [resueltosPage]);
 
-  function handlePendientesFromChange(value: string) {
-    setPendientesFrom(value);
-    setPendientesPage(1);
-  }
-
-  function handlePendientesToChange(value: string) {
-    setPendientesTo(value);
-    setPendientesPage(1);
-  }
-
-  function handleResueltosFromChange(value: string) {
-    setResueltosFrom(value);
-    setResueltosPage(1);
-  }
-
-  function handleResueltosToChange(value: string) {
-    setResueltosTo(value);
-    setResueltosPage(1);
-  }
-
-  async function loadPendientes(page: number, from: string, to: string) {
-    const { fromIso, toIso } = dateRangeToIso(from, to);
-    let query = supabase
+  async function loadPendientes(page: number) {
+    const { data, count, error } = await supabase
       .from("problemas_reportados")
       .select("*", { count: "exact" })
       .eq("estado", "pendiente")
       .order("fecha_creacion", { ascending: false })
       .range((page - 1) * PAGE_SIZE, (page - 1) * PAGE_SIZE + PAGE_SIZE - 1);
-    if (fromIso) query = query.gte("fecha_creacion", fromIso);
-    if (toIso) query = query.lte("fecha_creacion", toIso);
-
-    const { data, count, error } = await query;
     if (error) {
       setPendientesError(error.message);
       return;
@@ -103,18 +74,13 @@ export default function ProblemasReportadosPage() {
     setPendientesTotal(count ?? 0);
   }
 
-  async function loadResueltos(page: number, from: string, to: string) {
-    const { fromIso, toIso } = dateRangeToIso(from, to);
-    let query = supabase
+  async function loadResueltos(page: number) {
+    const { data, count, error } = await supabase
       .from("problemas_reportados")
       .select("*", { count: "exact" })
       .in("estado", ["descartado", "solucionado"])
       .order("fecha_creacion", { ascending: false })
       .range((page - 1) * PAGE_SIZE, (page - 1) * PAGE_SIZE + PAGE_SIZE - 1);
-    if (fromIso) query = query.gte("fecha_creacion", fromIso);
-    if (toIso) query = query.lte("fecha_creacion", toIso);
-
-    const { data, count, error } = await query;
     if (error) {
       setResueltosError(error.message);
       return;
@@ -156,8 +122,8 @@ export default function ProblemasReportadosPage() {
       return;
     }
     setActionTarget(null);
-    loadPendientes(pendientesPage, pendientesFrom, pendientesTo);
-    loadResueltos(resueltosPage, resueltosFrom, resueltosTo);
+    loadPendientes(pendientesPage);
+    loadResueltos(resueltosPage);
   }
 
   const justificacionRequired = actionTarget?.estado !== "pendiente";
@@ -171,14 +137,6 @@ export default function ProblemasReportadosPage() {
         <h2 className="mb-3 text-lg font-semibold text-gray-900">
           Pendientes
         </h2>
-        <div className="mb-3">
-          <DateRangeFilter
-            from={pendientesFrom}
-            to={pendientesTo}
-            onFromChange={handlePendientesFromChange}
-            onToChange={handlePendientesToChange}
-          />
-        </div>
 
         {pendientesError && (
           <p className="text-sm text-red-600">{pendientesError}</p>
@@ -188,7 +146,7 @@ export default function ProblemasReportadosPage() {
         )}
         {pendientes?.length === 0 && !pendientesError && (
           <p className="text-sm text-gray-500">
-            No hay problemas pendientes en este rango.
+            No hay problemas pendientes.
           </p>
         )}
 
@@ -237,14 +195,6 @@ export default function ProblemasReportadosPage() {
         <h2 className="mb-3 text-lg font-semibold text-gray-900">
           Descartados / Solucionados
         </h2>
-        <div className="mb-3">
-          <DateRangeFilter
-            from={resueltosFrom}
-            to={resueltosTo}
-            onFromChange={handleResueltosFromChange}
-            onToChange={handleResueltosToChange}
-          />
-        </div>
 
         {resueltosError && (
           <p className="text-sm text-red-600">{resueltosError}</p>
@@ -254,7 +204,7 @@ export default function ProblemasReportadosPage() {
         )}
         {resueltos?.length === 0 && !resueltosError && (
           <p className="text-sm text-gray-500">
-            No hay problemas descartados o solucionados en este rango.
+            No hay problemas descartados o solucionados.
           </p>
         )}
 

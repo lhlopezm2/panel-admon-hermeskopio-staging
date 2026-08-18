@@ -30,8 +30,6 @@ function makeStaticFromMock(opts: {
   const resueltosResult = opts.resueltos ?? { data: [], count: 0, error: null };
   const updateResult = opts.updateResult ?? { error: null };
 
-  const pendientesBuilders: Record<string, ReturnType<typeof vi.fn>>[] = [];
-  const resueltosBuilders: Record<string, ReturnType<typeof vi.fn>>[] = [];
   const updateMock = vi.fn((_payload: unknown) => ({
     eq: vi.fn(() => Promise.resolve(updateResult)),
   }));
@@ -43,18 +41,14 @@ function makeStaticFromMock(opts: {
       const self = () => builder;
       builder.eq = vi.fn(() => {
         mode = "pendientes";
-        pendientesBuilders.push(builder as never);
         return builder;
       });
       builder.in = vi.fn(() => {
         mode = "resueltos";
-        resueltosBuilders.push(builder as never);
         return builder;
       });
       builder.order = vi.fn(self);
       builder.range = vi.fn(self);
-      builder.gte = vi.fn(self);
-      builder.lte = vi.fn(self);
       builder.then = (
         onFulfilled?: (v: QueryResult) => unknown,
         onRejected?: (r: unknown) => unknown,
@@ -68,7 +62,7 @@ function makeStaticFromMock(opts: {
     update: updateMock,
   }));
 
-  return { fromFn, updateMock, pendientesBuilders, resueltosBuilders };
+  return { fromFn, updateMock };
 }
 
 // Versión con estado mutable compartido, para probar que confirmar una
@@ -98,8 +92,6 @@ function makeStatefulFromMock(items: ProblemaReportado[]) {
       });
       builder.order = vi.fn(self);
       builder.range = vi.fn(self);
-      builder.gte = vi.fn(self);
-      builder.lte = vi.fn(self);
       builder.then = (
         onFulfilled?: (v: QueryResult) => unknown,
         onRejected?: (r: unknown) => unknown,
@@ -151,11 +143,11 @@ describe("ProblemasReportadosPage", () => {
     supabase.from.mockImplementation(fromFn);
     render(<ProblemasReportadosPage />);
     expect(
-      await screen.findByText("No hay problemas pendientes en este rango."),
+      await screen.findByText("No hay problemas pendientes."),
     ).toBeInTheDocument();
     expect(
       await screen.findByText(
-        "No hay problemas descartados o solucionados en este rango.",
+        "No hay problemas descartados o solucionados.",
       ),
     ).toBeInTheDocument();
   });
@@ -225,27 +217,6 @@ describe("ProblemasReportadosPage", () => {
     expect(await screen.findByText("boom resueltos")).toBeInTheDocument();
   });
 
-  it("cambiar el filtro de fecha de 'Pendientes' resetea su página y filtra por fecha, sin afectar 'Resueltos'", async () => {
-    const { fromFn, pendientesBuilders } = makeStaticFromMock({
-      pendientes: { data: [problema()], count: 25, error: null },
-    });
-    supabase.from.mockImplementation(fromFn);
-    const user = userEvent.setup();
-    render(<ProblemasReportadosPage />);
-    await screen.findByText("Página 1 de 2");
-
-    const [desdePendientes] = screen.getAllByLabelText("Desde");
-    await user.type(desdePendientes, "2026-08-01");
-
-    await waitFor(() => {
-      const last = pendientesBuilders[pendientesBuilders.length - 1];
-      expect(last.gte).toHaveBeenCalledWith(
-        "fecha_creacion",
-        "2026-08-01T00:00:00.000Z",
-      );
-    });
-  });
-
   it("el botón 'Confirmar' del modal está deshabilitado sin justificación al descartar", async () => {
     const { fromFn } = makeStaticFromMock({
       pendientes: { data: [problema()], count: 1, error: null },
@@ -298,7 +269,7 @@ describe("ProblemasReportadosPage", () => {
       }),
     );
     expect(
-      await screen.findByText("No hay problemas pendientes en este rango."),
+      await screen.findByText("No hay problemas pendientes."),
     ).toBeInTheDocument();
     expect(screen.getByText("Descartado")).toBeInTheDocument();
     expect(

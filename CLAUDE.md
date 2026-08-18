@@ -165,27 +165,28 @@ dismiss and no way to change status back.
 
 Both read straight off `necesidades_reportadas`/`problemas_reportados` via
 plain PostgREST selects (`supabase.from(...).select("*", { count: "exact"
-}).order(...).range(...)`) rather than an RPC — unlike the negocios
-reportados/bloqueados listings, there's no cross-table join needed here, so
-a single admin-read RLS policy per table
+}).order("fecha_creacion", { ascending: false }).range(...)`) rather than
+an RPC — unlike the negocios reportados/bloqueados listings, there's no
+cross-table join needed here, so a single admin-read RLS policy per table
 (`necesidades_reportadas_select_admin` /
 `problemas_reportados_select_admin`,
 `supabase/migrations/20260818030004_...`) was enough; both tables were
 insert-only before this. Every list on both pages paginates at
 `PAGE_SIZE = 20` (vs. 10 for the negocios lists) via the same shared
-`PaginationControls`, and filters by a `fecha_creacion` date range via the
-shared `DateRangeFilter` (`src/components/DateRangeFilter.tsx` — two
-`<input type="date">`, "Desde" implicitly labels the first, "Hasta" the
-second) — `src/lib/dateRange.ts`'s `dateRangeToIso()` converts the plain
-`"yyyy-mm-dd"` input values to the ISO bounds used in `.gte()`/`.lte()`,
-interpreting the picked day as UTC (a deliberate simplification — the panel
-doesn't handle timezones anywhere else either) and treating "Hasta" as
-inclusive of the whole day (`T23:59:59.999Z`). Changing either date resets
-that list's page to 1 in the same `onChange` handler that updates the
-filter state, same reasoning as the search-box page-reset in
-`NegociosReportadosPage`. `NecesidadesReportadasPage` has a single list +
-filter; `ProblemasReportadosPage` (see below) has two of each, entirely
-independent of one another.
+`PaginationControls`, always ordered most-recent-first.
+`NecesidadesReportadasPage` additionally filters its single list by a
+`fecha_creacion` date range via the shared `DateRangeFilter`
+(`src/components/DateRangeFilter.tsx` — two `<input type="date">`, "Desde"
+implicitly labels the first, "Hasta" the second) — `src/lib/dateRange.ts`'s
+`dateRangeToIso()` converts the plain `"yyyy-mm-dd"` input values to the ISO
+bounds used in `.gte()`/`.lte()`, interpreting the picked day as UTC (a
+deliberate simplification — the panel doesn't handle timezones anywhere
+else either) and treating "Hasta" as inclusive of the whole day
+(`T23:59:59.999Z`). Changing either date resets the page to 1 in the same
+`onChange` handler that updates the filter state, same reasoning as the
+search-box page-reset in `NegociosReportadosPage`.
+`ProblemasReportadosPage` (see below) deliberately has **no** date filter
+on either of its two lists — sort-only, by request.
 
 `NecesidadesReportadasPage` additionally has a "Descargar CSV" button that
 opens a small modal with its own `DateRangeFilter` — **prefilled from the
@@ -210,7 +211,8 @@ with a `problemas_reportados_estado_justificacion_consistency` `CHECK`
 mirroring `businesses_bloqueo_consistency`'s shape: `estado='pendiente'`
 always pairs with `justificacion IS NULL`, `'descartado'`/`'solucionado'`
 always pair with a non-null one. The page renders two side-by-side,
-independently paginated/filtered lists — "Pendientes"
+independently paginated lists (no date filter on either — just
+`order("fecha_creacion", { ascending: false })`) — "Pendientes"
 (`.eq("estado", "pendiente")`) and "Descartados / Solucionados"
 (`.in("estado", ["descartado", "solucionado"])`), the latter tagged with a
 color badge per row (`ESTADO_BADGE_CLASS` — grey for descartado, green for
@@ -277,11 +279,10 @@ the same table that must resolve independently (Pendientes vs.
 Descartados/Solucionados) plus a third (`update`) triggered later:
 `makeStaticFromMock` builds a fresh per-call `select()` builder that infers
 which list it's serving from whether `.eq("estado", ...)` or
-`.in("estado", ...)` was called on it (letting fixed, pre-canned results be
-asserted against independently — including capturing every builder created
-per list, so a test can inspect the *last* one's `.gte`/`.lte` calls after a
-filter change) while `.update()` resolves from a separately configurable
-result; `makeStatefulFromMock` instead drives both queries off one shared
+`.in("estado", ...)` was called on it, letting fixed, pre-canned results be
+asserted against independently, while `.update()` resolves from a
+separately configurable result; `makeStatefulFromMock` instead drives both
+queries off one shared
 mutable `items` array that `.update()` actually mutates, for the round-trip
 tests verifying a row really moves from one list to the other after a
 confirmed action (same "mutate shared state from inside the mock" precedent
