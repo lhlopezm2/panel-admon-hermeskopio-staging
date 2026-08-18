@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { useDebouncedValue } from "../lib/useDebouncedValue";
+import PaginationControls from "../components/PaginationControls";
 import {
   REPORT_REASON_LABELS,
   type NegocioBloqueado,
@@ -9,40 +10,6 @@ import {
 } from "../lib/types";
 
 const PAGE_SIZE = 10;
-
-interface PaginationControlsProps {
-  page: number;
-  totalCount: number;
-  onPrev: () => void;
-  onNext: () => void;
-}
-
-// Compartido por las 2 listas — ambas paginan de a PAGE_SIZE con la misma
-// UI, así que no tiene sentido duplicarla.
-function PaginationControls({ page, totalCount, onPrev, onNext }: PaginationControlsProps) {
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-  return (
-    <div className="mt-3 flex items-center justify-between text-sm text-gray-500">
-      <button
-        onClick={onPrev}
-        disabled={page <= 1}
-        className="rounded px-2 py-1 hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-transparent"
-      >
-        ← Anterior
-      </button>
-      <span>
-        Página {page} de {totalPages}
-      </span>
-      <button
-        onClick={onNext}
-        disabled={page >= totalPages}
-        className="rounded px-2 py-1 hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-transparent"
-      >
-        Siguiente →
-      </button>
-    </div>
-  );
-}
 
 // Dos listados lado a lado (no uno debajo del otro) — con miles de negocios
 // reportados, apilarlos obligaría a hacer scroll excesivo antes de llegar a
@@ -187,6 +154,7 @@ export default function NegociosReportadosPage() {
           <PaginationControls
             page={pendientesPage}
             totalCount={pendientesTotal}
+            pageSize={PAGE_SIZE}
             onPrev={() => setPendientesPage((p) => Math.max(1, p - 1))}
             onNext={() => setPendientesPage((p) => p + 1)}
           />
@@ -254,6 +222,7 @@ export default function NegociosReportadosPage() {
           <PaginationControls
             page={bloqueadosPage}
             totalCount={bloqueadosTotal}
+            pageSize={PAGE_SIZE}
             onPrev={() => setBloqueadosPage((p) => Math.max(1, p - 1))}
             onNext={() => setBloqueadosPage((p) => p + 1)}
           />

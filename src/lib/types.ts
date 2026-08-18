@@ -72,6 +72,37 @@ export interface NegocioBloqueado {
   total_count: number;
 }
 
+// Filas de `necesidades_reportadas`/`problemas_reportados`, leídas directo
+// (sin RPC) bajo las policies "necesidades_reportadas_select_admin" /
+// "problemas_reportados_select_admin" (20260818030004_...) — no hay ningún
+// join involucrado, a diferencia de los negocios reportados/bloqueados.
+export interface NecesidadReportada {
+  id: string;
+  id_persona: string;
+  descripcion_necesidad: string;
+  fecha_creacion: string;
+}
+
+// CHECK problemas_reportados_estado_justificacion_consistency
+// (20260818031409_...): 'pendiente' siempre trae justificacion=null;
+// 'descartado'/'solucionado' siempre traen una justificacion no vacía.
+export type ProblemaEstado = "pendiente" | "descartado" | "solucionado";
+
+export interface ProblemaReportado {
+  id: string;
+  id_persona: string;
+  descripcion_problema: string;
+  fecha_creacion: string;
+  estado: ProblemaEstado;
+  justificacion: string | null;
+}
+
+export const PROBLEMA_ESTADO_LABELS: Record<ProblemaEstado, string> = {
+  pendiente: "Pendiente",
+  descartado: "Descartado",
+  solucionado: "Solucionado",
+};
+
 export const REPORT_REASON_LABELS: Record<ReportReason, string> = {
   informacion_incorrecta: "Información incorrecta",
   negocio_cerrado: "Negocio cerrado",

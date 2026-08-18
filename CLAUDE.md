@@ -89,11 +89,7 @@ UX (inline error vs. silent redirect). On success it navigates straight to
 other screen in this panel. It owns the tab nav (`NavLink`, active-state
 styling) and the "Cerrar sesión" button (moved here from the old
 `ReportsListPage` since it now applies to all 3 tabs, not just one), and
-renders the active child via `<Outlet />`. `NecesidadesReportadasPage` and
-`ProblemasReportadosPage` are deliberately empty ("Próximamente.") — both
-`necesidades_reportadas` and `problemas_reportados` are insert-only tables
-with no admin SELECT policy yet, so there's nothing to fetch until that
-functionality is designed.
+renders the active child via `<Outlet />`.
 
 ### Report moderation flow (`src/routes/NegociosReportadosPage.tsx`, `src/routes/BusinessDetailPage.tsx`)
 
@@ -104,10 +100,12 @@ with a business count in the thousands, stacking them would force scrolling
 past the entire first list before ever seeing "Bloqueados". Each has its
 own debounced (300 ms, `src/lib/useDebouncedValue.ts`) search-by-owner-email
 input and paginates independently at `PAGE_SIZE = 10`
-(`PaginationControls`, a small private component shared by both sections —
-"← Anterior" / "Página X de Y" / "Siguiente →", `Anterior` disabled on page
-1, `Siguiente` disabled on the last page, both hidden entirely when the
-list is empty): "Con reportes pendientes" (businesses with at least one
+(`src/components/PaginationControls.tsx`, shared across every paginated
+list in the panel, not just these two — takes `pageSize` as a prop since
+Negocios/Necesidades/Problemas each paginate at a different size — "←
+Anterior" / "Página X de Y" / "Siguiente →", `Anterior` disabled on page 1,
+`Siguiente` disabled on the last page, both hidden entirely when the list
+is empty): "Con reportes pendientes" (businesses with at least one
 `pendiente` report) and "Bloqueados" (`businesses.bloqueado = true`,
 regardless of whether they ever had a report — an admin can block from
 `BusinessDetailPage` with just a motivo, no report required). Both come
@@ -163,16 +161,90 @@ report's `status` changes short of `block_negocio` auto-transitioning
 `pendiente` reports on that business to `accionado` — there is no bulk
 dismiss and no way to change status back.
 
+### Necesidades/Problemas Reportados tabs (`src/routes/NecesidadesReportadasPage.tsx`, `src/routes/ProblemasReportadosPage.tsx`)
+
+Both read straight off `necesidades_reportadas`/`problemas_reportados` via
+plain PostgREST selects (`supabase.from(...).select("*", { count: "exact"
+}).order(...).range(...)`) rather than an RPC — unlike the negocios
+reportados/bloqueados listings, there's no cross-table join needed here, so
+a single admin-read RLS policy per table
+(`necesidades_reportadas_select_admin` /
+`problemas_reportados_select_admin`,
+`supabase/migrations/20260818030004_...`) was enough; both tables were
+insert-only before this. Every list on both pages paginates at
+`PAGE_SIZE = 20` (vs. 10 for the negocios lists) via the same shared
+`PaginationControls`, and filters by a `fecha_creacion` date range via the
+shared `DateRangeFilter` (`src/components/DateRangeFilter.tsx` — two
+`<input type="date">`, "Desde" implicitly labels the first, "Hasta" the
+second) — `src/lib/dateRange.ts`'s `dateRangeToIso()` converts the plain
+`"yyyy-mm-dd"` input values to the ISO bounds used in `.gte()`/`.lte()`,
+interpreting the picked day as UTC (a deliberate simplification — the panel
+doesn't handle timezones anywhere else either) and treating "Hasta" as
+inclusive of the whole day (`T23:59:59.999Z`). Changing either date resets
+that list's page to 1 in the same `onChange` handler that updates the
+filter state, same reasoning as the search-box page-reset in
+`NegociosReportadosPage`. `NecesidadesReportadasPage` has a single list +
+filter; `ProblemasReportadosPage` (see below) has two of each, entirely
+independent of one another.
+
+`NecesidadesReportadasPage` additionally has a "Descargar CSV" button that
+opens a small modal with its own `DateRangeFilter` — **prefilled from the
+list's currently-active date filter** when opened (not always blank), and
+"Descargar" stays disabled until **both** "Desde" and "Hasta" are chosen
+(no unbounded "export everything" export). On click it re-queries
+`necesidades_reportadas` selecting only `descripcion_necesidad` (no
+pagination — every matching row), builds the CSV via `src/lib/csv.ts`'s
+`toCsv("Descripcion", rows)` (RFC 4180 escaping: quotes a field containing
+a comma/quote/newline, doubling embedded quotes), and triggers a browser
+download via `downloadCsv()` (`Blob` + a UTF-8 BOM prefix so Excel doesn't
+mangle accents/ñ + a temporary `<a download>` click). A query error surfaces
+inline inside the modal instead of closing it. `ProblemasReportadosPage`
+deliberately has **no** download button — out of scope per the original
+request, unlike Necesidades.
+
+`ProblemasReportadosPage` also moderates: `problemas_reportados` gained
+`estado` (`'pendiente' | 'descartado' | 'solucionado'`, default `'pendiente'`)
+and `justificacion` columns
+(`supabase/migrations/20260818031409_problemas_reportados_estado_justificacion.sql`),
+with a `problemas_reportados_estado_justificacion_consistency` `CHECK`
+mirroring `businesses_bloqueo_consistency`'s shape: `estado='pendiente'`
+always pairs with `justificacion IS NULL`, `'descartado'`/`'solucionado'`
+always pair with a non-null one. The page renders two side-by-side,
+independently paginated/filtered lists — "Pendientes"
+(`.eq("estado", "pendiente")`) and "Descartados / Solucionados"
+(`.in("estado", ["descartado", "solucionado"])`), the latter tagged with a
+color badge per row (`ESTADO_BADGE_CLASS` — grey for descartado, green for
+solucionado) and showing the stored `justificacion` text. State changes are
+a direct `UPDATE` under the `problemas_reportados_update_admin` RLS policy
+(same admin-only shape as `reports_update_admin`, no RPC — no side effects
+like an email or a cross-table transition to justify one) and are fully
+**reversible in any direction** (pendiente ↔ descartado ↔ solucionado), a
+deliberate choice against keeping any audit trail of who/when changed a
+problem's state — only the current `estado`/`justificacion` matter. All 3
+transitions share one confirmation modal (`actionTarget` state: `{id,
+estado}`): targeting `'pendiente'` shows a plain confirm message and needs
+no justificación (and clears it, per the `CHECK` above); targeting
+`'descartado'`/`'solucionado'` shows a required `<textarea>` — "Confirmar"
+stays disabled until it's non-empty — pre-filled with the row's existing
+justificación when switching directly between the two resolved states (a
+convenience, not a requirement) but blank when coming from pendiente. On
+success the modal closes and **both** lists reload (the acted-on row always
+moves from one to the other).
+
 ### Data shapes (`src/lib/types.ts`)
 
 Every row shape read from Supabase (`Business`, `Report`, `BloqueoHistorialRow`,
-`NegocioReportadoPendiente`, `NegocioBloqueado`) and the
-`ReportReason`/`ReportStatus`/`BloqueoAccion` unions are declared once here
-and imported everywhere — there is no separate model/DTO layer like the
-Flutter app's `data/models/`, since this panel only ever reads rows close
-to their raw table/RPC-return shape. `NegocioReportadoPendiente` and
-`NegocioBloqueado` mirror the two admin-listing RPCs' `returns table(...)`
-column-for-column, not any actual table.
+`NegocioReportadoPendiente`, `NegocioBloqueado`, `NecesidadReportada`,
+`ProblemaReportado`) and the `ReportReason`/`ReportStatus`/`BloqueoAccion`/
+`ProblemaEstado` unions are declared once here and imported everywhere —
+there is no separate model/DTO layer like the Flutter app's `data/models/`,
+since this panel only ever reads rows close to their raw table/RPC-return
+shape. `NegocioReportadoPendiente` and `NegocioBloqueado` mirror the two
+admin-listing RPCs' `returns table(...)` column-for-column, not any actual
+table; `NecesidadReportada`/`ProblemaReportado` do mirror actual tables
+1:1, since those are read via plain selects rather than an RPC.
+`PROBLEMA_ESTADO_LABELS` follows the same `Record<Enum, string>` display-label
+pattern as `REPORT_REASON_LABELS`.
 
 ### Tests (`src/**/__tests__/`)
 
@@ -183,15 +255,37 @@ Every test file still imports `describe`/`it`/`expect`/`vi` explicitly from
 `"vitest"` rather than relying on the globals.
 
 `src/test/chainable.ts` is the shared mock for Supabase's query builder: a
-single object that is both chainable (`.select().eq().order()...` all
-return the same object) and directly awaitable (implements `.then`), since
-the real supabase-js builder supports both usages and call sites in this
-codebase use either depending on whether `.single()` is needed. Pass it a
-plain result, or a function returning one when a test needs to simulate a
+single object that is both chainable (`.select().eq().order().range().gte().lte()...`
+all return the same object) and directly awaitable (implements `.then`),
+since the real supabase-js builder supports both usages and call sites in
+this codebase use either depending on whether `.single()` is needed. Pass it
+a plain result, or a function returning one when a test needs to simulate a
 row changing between an initial load and a reload (see
 `BusinessDetailPage.test.tsx`'s `setupMocks`, which mutates a shared
 `state` object from inside RPC mocks to simulate `block_negocio`/
 `unblock_negocio` actually changing `businesses.bloqueado` server-side).
+`NecesidadesReportadasPage.test.tsx` defines its own local `makeQueryMock`
+instead of reusing `chainable`: the page issues two structurally different
+queries against the same table (the paginated list select vs. the
+unpaginated `descripcion_necesidad`-only download select), so tests
+reassign `supabase.from.mockReturnValue(...)` to a fresh builder between the
+initial render and the download click rather than trying to make one shared
+builder branch on which columns were selected.
+`ProblemasReportadosPage.test.tsx` goes further with two purpose-built
+factories, since a single render issues *two concurrent* queries against
+the same table that must resolve independently (Pendientes vs.
+Descartados/Solucionados) plus a third (`update`) triggered later:
+`makeStaticFromMock` builds a fresh per-call `select()` builder that infers
+which list it's serving from whether `.eq("estado", ...)` or
+`.in("estado", ...)` was called on it (letting fixed, pre-canned results be
+asserted against independently — including capturing every builder created
+per list, so a test can inspect the *last* one's `.gte`/`.lte` calls after a
+filter change) while `.update()` resolves from a separately configurable
+result; `makeStatefulFromMock` instead drives both queries off one shared
+mutable `items` array that `.update()` actually mutates, for the round-trip
+tests verifying a row really moves from one list to the other after a
+confirmed action (same "mutate shared state from inside the mock" precedent
+as `BusinessDetailPage.test.tsx`'s `setupMocks`).
 
 Test files (`*.test.ts(x)`, `__tests__/`, `src/test/`) are excluded from
 `tsconfig.json`'s build (`tsc -b` via `npm run build`) so their looser

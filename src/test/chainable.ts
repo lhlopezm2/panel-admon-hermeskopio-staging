@@ -22,6 +22,9 @@ export function chainable<T>(
   builder.eq = vi.fn(self);
   builder.order = vi.fn(self);
   builder.update = vi.fn(self);
+  builder.range = vi.fn(self);
+  builder.gte = vi.fn(self);
+  builder.lte = vi.fn(self);
   builder.single = vi.fn(() => Promise.resolve(getResult()));
   builder.then = (
     onFulfilled?: (value: T) => unknown,
@@ -33,6 +36,9 @@ export function chainable<T>(
     eq: ReturnType<typeof vi.fn>;
     order: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
+    range: ReturnType<typeof vi.fn>;
+    gte: ReturnType<typeof vi.fn>;
+    lte: ReturnType<typeof vi.fn>;
     single: ReturnType<typeof vi.fn>;
   };
 }
