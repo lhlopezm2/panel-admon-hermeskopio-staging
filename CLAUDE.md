@@ -288,6 +288,23 @@ tests verifying a row really moves from one list to the other after a
 confirmed action (same "mutate shared state from inside the mock" precedent
 as `BusinessDetailPage.test.tsx`'s `setupMocks`).
 
+Shared pieces used by more than one page get their own dedicated test file
+instead of relying solely on the page tests that exercise them —
+`src/components/__tests__/PaginationControls.test.tsx`,
+`src/components/__tests__/DateRangeFilter.test.tsx`, and
+`src/lib/__tests__/useDebouncedValue.test.ts`. The last one is the one
+worth calling out: it uses `renderHook`/`act` from `@testing-library/react`
+with `vi.useFakeTimers()` (not real waits, unlike the ~2s real-timer
+debounce assertion still living in `NegociosReportadosPage.test.tsx`) to
+cover the debounce edge cases a page-level test can't reasonably reach —
+several rapid value changes before the delay elapses collapsing into a
+single update with only the *last* value, and `clearTimeout` actually
+firing on unmount. `src/lib/__tests__/types.test.ts` applies the same
+"every enum member has a non-empty label, no orphan keys" pair of
+assertions to both `REPORT_REASON_LABELS` and `PROBLEMA_ESTADO_LABELS` —
+add a third block here if a future `Record<Enum, string>` label map joins
+`types.ts`.
+
 Test files (`*.test.ts(x)`, `__tests__/`, `src/test/`) are excluded from
 `tsconfig.json`'s build (`tsc -b` via `npm run build`) so their looser
 patterns aren't held to the same `noUnusedLocals`/`noUnusedParameters`

@@ -303,6 +303,37 @@ describe("ProblemasReportadosPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("alternar directamente entre descartado y solucionado precarga la justificación anterior", async () => {
+    const items = [
+      problema({ estado: "solucionado", justificacion: "Arreglado en v2" }),
+    ];
+    const { fromFn, updateMock } = makeStatefulFromMock(items);
+    supabase.from.mockImplementation(fromFn);
+    const user = userEvent.setup();
+    render(<ProblemasReportadosPage />);
+
+    await user.click(await screen.findByText("Marcar como descartado"));
+
+    const textarea = screen.getByPlaceholderText("Explica el motivo…");
+    expect(textarea).toHaveValue("Arreglado en v2");
+    expect(screen.getByRole("button", { name: "Confirmar" })).toBeEnabled();
+
+    await user.clear(textarea);
+    await user.type(textarea, "Ya no es reproducible");
+    await user.click(screen.getByRole("button", { name: "Confirmar" }));
+
+    await waitFor(() =>
+      expect(updateMock).toHaveBeenCalledWith({
+        estado: "descartado",
+        justificacion: "Ya no es reproducible",
+      }),
+    );
+    expect(await screen.findByText("Descartado")).toBeInTheDocument();
+    expect(
+      screen.getByText("Justificación: Ya no es reproducible"),
+    ).toBeInTheDocument();
+  });
+
   it("un error al confirmar se muestra dentro del modal sin cerrarlo", async () => {
     const { fromFn } = makeStaticFromMock({
       pendientes: { data: [problema()], count: 1, error: null },
