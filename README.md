@@ -11,16 +11,42 @@ Este repositorio es independiente del repositorio principal de la app
 de la app sea visible al construir el panel, pero está en su propio
 `.gitignore` — nunca se commitea ahí).
 
-## Staging
+## Ambientes: staging vs. prod
 
-Publicado en GitHub Pages: **https://lhlopezm2.github.io/panel-admon-hermeskopio-staging/**
+Igual que la app Flutter, staging y prod son completamente independientes —
+cada uno es su propio repositorio de GitHub (mismo código, distinta
+remota), con su propio proyecto Supabase, sus propios secrets y su propio
+sitio de GitHub Pages.
+
+| Ambiente | Repo (remoto local) | URL publicada | Proyecto Supabase |
+|---|---|---|---|
+| Staging | `origin` → `panel-admon-hermeskopio-staging` | https://lhlopezm2.github.io/panel-admon-hermeskopio-staging/ | staging |
+| Prod | `prod` → `panel-admon-hermeskopio-prod` | https://lhlopezm2.github.io/panel-admon-hermeskopio-prod/ | prod |
+
+Este repositorio (`origin`, staging) es la única fuente de verdad — no hay
+una segunda copia del código con su propia historia de git. Promover un
+cambio ya probado en staging a prod es un solo comando:
+
+```bash
+git push prod main
+```
+
+Eso empuja el mismo commit al repo de prod, que dispara su propio
+`deploy.yml` (idéntico al de este repo) usando **sus propios** secrets
+(`VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` del proyecto Supabase de
+prod) y su propia variable de repo `VITE_BASE_PATH` — no hace falta tocar
+código ni hacer un commit distinto para cada ambiente (ver
+`vite.config.ts`).
 
 ## Requisitos
 
 - Node.js 20+ y npm.
-- Acceso al proyecto Supabase de Hermeskopio (URL + anon key).
+- Acceso al proyecto Supabase de Hermeskopio del ambiente que quieras correr
+  (URL + anon key) — staging y prod son proyectos separados.
 - Una cuenta de Hermeskopio cuyo `id` ya esté insertado en la tabla `admins`
-  (ver "Pendiente" más abajo — hoy esa tabla está vacía).
+  **de ese mismo proyecto** (ver "Pendiente" más abajo) — la tabla `admins`
+  es independiente por proyecto Supabase, así que un admin de staging no es
+  automáticamente admin en prod.
 
 ## Correr en local
 
@@ -55,54 +81,43 @@ existe dentro de la Edge Function `send-bloqueo-email` del repo principal.
 
 ## Desplegar en GitHub Pages
 
-El repo ya incluye el workflow `.github/workflows/deploy.yml`, que en cada
-push a `main` compila el proyecto y lo publica vía GitHub Actions (no usa
-una rama `gh-pages` manual).
+Cada repo (staging y prod) incluye el mismo workflow
+`.github/workflows/deploy.yml`, que en cada push a `main` compila el
+proyecto y lo publica vía GitHub Actions (no usa una rama `gh-pages`
+manual). `vite.config.ts`'s `base` no está hardcodeado — se lee de la
+variable de repo `VITE_BASE_PATH` en tiempo de build (con el valor de
+staging como fallback si esa variable no existe), justo para que el mismo
+commit sirva para ambos repos sin editar el archivo cada vez.
 
-1. **Crear el repositorio en GitHub** (vacío, sin README/license — este
-   proyecto ya trae los suyos):
+Para dar de alta un ambiente nuevo (staging y prod ya están configurados;
+esto solo aplica si se agrega un tercero en el futuro):
+
+1. **Crear el repositorio en GitHub** (vacío, sin README/license), y
+   agregarlo como remoto acá:
    ```bash
-   cd /home/luis-lopez/Documentos/hermeskopio_claude/.panel_admon
-   git init
-   git add .
-   git commit -m "Initial admin panel scaffold"
-   git branch -M main
-   git remote add origin https://github.com/<tu-usuario>/<nombre-repo>.git
-   git push -u origin main
+   git remote add <nombre-remoto> https://github.com/<tu-usuario>/<nombre-repo>.git
+   git push <nombre-remoto> main
    ```
-
-2. **Ajustar `vite.config.ts`** para que `base` coincida exactamente con el
-   nombre del repositorio que creaste (hoy dice
-   `/panel-admon-hermeskopio/` como placeholder):
-   ```ts
-   base: "/<nombre-repo>/",
-   ```
-   Si el nombre real del repo es distinto, cambia esta línea, haz commit y
-   push antes del primer deploy — si no coincide, los assets (JS/CSS) del
-   sitio publicado no cargarán.
-
-3. **Configurar los secrets del repositorio** — Settings → Secrets and
-   variables → Actions → New repository secret:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-
+2. **Configurar los secrets del repositorio nuevo** — Settings → Secrets
+   and variables → Actions → New repository secret:
+   - `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` del proyecto Supabase
+     de ese ambiente.
+3. **Configurar la variable del repositorio nuevo** — Settings → Secrets
+   and variables → Actions → pestaña **Variables** → New repository
+   variable:
+   - `VITE_BASE_PATH` = `/<nombre-repo>/` (debe coincidir exactamente con
+     el nombre del repo o los assets del sitio publicado no cargarán).
 4. **Activar GitHub Pages** — Settings → Pages → Build and deployment →
    Source: **"GitHub Actions"** (no "Deploy from a branch").
-
-5. Cualquier push a `main` (incluido el paso 1) dispara el workflow. Revisa
-   la pestaña **Actions** del repo para ver el progreso; al terminar, el
-   panel queda publicado en
-   `https://<tu-usuario>.github.io/<nombre-repo>/`.
+5. El push del paso 1 ya dispara el workflow. Revisa la pestaña
+   **Actions** del repo nuevo para ver el progreso; al terminar, el panel
+   queda publicado en `https://<tu-usuario>.github.io/<nombre-repo>/`.
 
 ## Pendiente
 
 Estas piezas todavía no están resueltas y son necesarias para que el
 bloqueo funcione de punta a punta:
 
-- **Crear el repositorio en GitHub y hacer el push inicial** — el código
-  está listo localmente pero `.panel_admon/` todavía no es un repositorio
-  git (no se ha corrido `git init`). Seguir los pasos de la sección
-  anterior.
 - **Configurar y desplegar la Edge Function de correo** — se hace desde el
   repositorio principal de Hermeskopio (`supabase/functions/send-bloqueo-email/`),
   no desde este panel:
@@ -118,10 +133,10 @@ bloqueo funcione de punta a punta:
   Hay que verificar ese dominio (o uno real) en el panel de Resend antes de
   que los correos se entreguen; si no, Resend rechazará el envío.
 - **Insertar el primer admin** — la tabla `admins` está vacía hoy a
-  propósito (no hay flujo de auto-registro). Insertar manualmente, vía SQL
-  editor de Supabase, la fila del primer administrador:
+  propósito (no hay flujo de auto-registro), y es independiente por
+  proyecto Supabase (staging y prod cada uno necesita su propia fila).
+  Insertar manualmente, vía SQL editor de Supabase, la fila del primer
+  administrador en el proyecto correspondiente:
   ```sql
   insert into admins (id_persona) values ('<uuid de la persona en personas>');
   ```
-- **Confirmar el `base` de `vite.config.ts`** una vez exista el nombre real
-  del repositorio (paso 2 de la sección de despliegue).

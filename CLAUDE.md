@@ -12,10 +12,16 @@ Auth) that additionally has a row in the `admins` table.
 
 This directory is nested inside the main app's repo (`hermeskopio_claude/`)
 purely so the panel's code is co-located with the schema it depends on, but
-it is **its own independent git repository** (`git init`'d here, pushed to
-`panel-admon-hermeskopio-staging` on GitHub) and is listed in the parent
+it is **its own independent git repository** and is listed in the parent
 repo's `.gitignore` — it is never committed there. Always run git commands
 from inside `.panel_admon/`, not the parent repo.
+
+Two remotes point at two independent GitHub repos/Supabase projects/GitHub
+Pages sites — `origin` (`panel-admon-hermeskopio-staging`, the source of
+truth for all development) and `prod` (`panel-admon-hermeskopio-prod`,
+promoted to via `git push prod main` once a change is verified on
+staging — no separate commit history, same code). See the README's
+"Ambientes: staging vs. prod" for the full picture.
 
 ## Commands
 
@@ -42,9 +48,14 @@ repo's `supabase/functions/send-bloqueo-email/` Edge Function environment —
 never in this project.
 
 Deployment is automatic: `.github/workflows/deploy.yml` builds and publishes
-to GitHub Pages on every push to `main`, injecting the two `VITE_*` vars
-from repository secrets. `vite.config.ts`'s `base` must exactly match the
-GitHub repo name or the deployed assets 404.
+to GitHub Pages on every push to `main`, injecting the two `VITE_SUPABASE_*`
+vars from repository secrets and `VITE_BASE_PATH` from a repository
+variable. `vite.config.ts`'s `base` reads `process.env.VITE_BASE_PATH`
+(falling back to the staging path) rather than a hardcoded string — it
+must exactly match the GitHub repo name being deployed to or the assets
+404, and since the same commit is pushed to both the staging and prod
+repos verbatim (see "Ambientes" above), the repo-specific value has to
+come from each repo's own Actions variable, not from a committed file.
 
 ## Architecture
 
